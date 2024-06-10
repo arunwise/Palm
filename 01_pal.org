@@ -1,0 +1,210 @@
+#+TITLE: PAL: Program-Aided Language Model (summary)
+#+AUTHOR: N. Arun Varma
+#+DATE: <2024-06-03 Mon>
+#+bibliography: /Users/arun/bibliography/bibliography.bib
+
+* Claim
+The main claim of this paper is that LMs suffer at performing
+arithmetic and symbolic reasoning tasks. In order to overcome this
+handicap the authors develop a new technique -- Program Aided Language
+Model.  The authors claim that techniques such as chain of thought
+prompting are somewhat helpful but do not completely solve the
+problem. This happens because chain of thought prompting can help the
+LM to decompose the problem correctly. Yet, it but might yet make
+mistakes in solving the subproblems. The main contribution of this
+paper is the development of a method to make LLMs generate reasoning
+steps in a programming language which can then be offloaded to an
+interpreter.
+
+* State of the Art
+Before the advent of PAL and more recently agentic LMs the popular
+approaches for solving moderate to difficult tasks with LMs was the
+use of few shot prompting and chain of thought prompting.
+
+** Few shot prompting
+In few shot prompting the context for the LM includes several
+input+completion pairs. The model is then provided with a test
+instance and asked to provide a completion.
+
+** Chain-of-thought prompting
+In COT prompting each example in the context is augmented with
+reasoning steps in natural language. The examples containing input,
+reasoning steps and completion are provided as context to the LM and
+it is asked to produce both the reasoning/decomposition steps as well
+as the answer/completion on a test instance.
+
+* Program-aided Language Model
+In PAL technique, the LM is provided a context which contains several
+inputs and their decomposition steps. The main difference with COT
+prompting is that the decomposition steps are a mix of natural
+language and programming language steps. Note that the final answer is
+not part of the context. The natural language steps are formatted as
+comments of a programming language and the programming language steps
+are formatted as syntactically correct statements in the programming
+language. Instead the program that results from the decomposition
+steps is passed to the interpreter to arrive at the final answer. An
+example PAL prompt is shown below.
+
+#+CAPTION: PAL example [cite:@gao2023pal]
+#+NAME: Figure 1
+#+ATTR_HTML: :width 700px
+[[./images/pal_example_1.png]]
+
+* Experimental setup
+The PAL approach was compared against direct prompting and COT
+prompting on range of problems. The underlying LMs used were
+codex-davinci-002 and PaLM-540B. The problem sets were:
+1. Mathematical problems from GSM8K, SVAMP, ASDIV and MAWPS
+2. Symbolic reasoning problems from BIG-Bench Hard
+3. Algorithmic problems from BIG-Bench Hard
+
+Three methods were compared: few shot, COT and PAL. The underlying LM
+was CODEX (code-davinci-002). In a few cases where results are
+available, comparison was also made with PaLM-540B model.
+
+** Mathematical reasoning
+Mathematical problems in the datasets considered are algebra word
+problems. One modification of the GSM8K dataset included replacing one
+of the numbers with a random 7 digit number. This was done to
+ascertain the performance of LMs when confronted with large numbers.
+
+** Symbolic reasoning
+Three problem sets were considered for symbolic reasoning. The first
+one involved reasoning about colored objects on a surface. This task
+requires the LM to keep track of the color and the relative positions
+of the objects. The next problem set involved data about penguins in a
+table. The context can also contain instructions to add or modify the
+table. Finally a question is asked about the penguins in the
+table. This task requires the LM to keep track of the attributes of
+the penguins and the contents of the table as it is updated. The last
+problem set involves questions that test the understanding of dates
+from natural language and the ability to perform addition and
+subtraction on dates.
+
+** Algorithmic reasoning
+This involves two problem sets. First one is object counting which
+involves determining set membership and the second one is repeat copy
+which involves generating a sequence of words according to
+instructions.
+
+* Results
+
+The PAL method outperforms COT and direct prompting across all tasks
+and problem sets as can be observed from Figures 2 and 3. There is
+variation in the outperformance across problem sets that is probably a
+function of the difficulty/complexity of the tasks. For example ADDSUB
+and SINGLEOP have simple tasks which involve performing a single
+arithmetic operation (typically addition or subtraction) to arrive at
+the answer, where as problems from GSM8K require more involved
+reasoning. Surprisingly there are a few tasks such as SINGLEOP, ADDSUB
+and REPEAT COPY where direct prompting is already good and use of COT
+decreases the language model performance.
+
+
+#+CAPTION: Results for mathematical reasoning [cite:@gao2023pal]
+#+NAME: Figure 2
+#+ATTR_HTML: :width 700px
+[[./images/pal_mathematical_problems.png]]
+
+#+CAPTION: Results for symbolic and algorithmic reasoning [cite:@gao2023pal]
+#+NAME: Figure 3
+#+ATTR_HTML: :width 700px
+[[./images/pal_symbolic_algorithmic_problems.png]]
+
+
+* Analysis
+** Mathematical reasoning
+The most interesting result in mathematical reasoning is the
+performance of models on GSM-HARD. The authors note that the GSM-HARD
+dataset is produced by first outputting a proram using PAL, verifying
+its answer against ground truth in GSM8K, assuming the correctness of
+the program in case the answer matches the one found in GSM8K and
+finally running the program by substituting one of the values with a
+larger random number. While there is a possibility of generating
+incorrect instances due to the assumption of program correctness, it
+is unlikely and this is echoed by the authors who manually verified 25
+programs. Given the discussion thus far on should expect comparable
+results in GSM8K and GSM-HARD instead we have a noticeable drop in
+solve rate for PAL when confronted with GSM-HARD. Does this mean that
+program generation is sensitive to the value of numbers in the
+context?
+
+In order to investigate this question the authors run COT on GSM8K and
+corresponding problems in GSM-HARD. The authors noted that in 16 out
+of 25 inputs the "thoughts" generated were identical. This means that
+in a significant fraction (36%) of cases the language model has
+difficulty in decomposing the problem correctly when presented with
+large numbers.
+
+
+** Symbolic and algorithmic reasoning
+The authors have observed that the performance of PAL remains
+consistent across a range of problem complexities (as measured by the
+number of objects in colord sets task). In contrast, the performance
+of COT is unstable and drops as the number of objects in the colored
+sets task is increased. See Figure 4.
+
+#+CAPTION: Solve rate for varying complexity [cite:@gao2023pal]
+#+NAME: Figure 4
+#+ATTR_HTML: :width 700px
+[[./images/colored_objects_complexity.png]]
+
+** Impact of LM size on performance.
+The authors evaluated the impact of the size of the LM on the
+performance. They noted that as they vary the size of the LM the
+outperformance of PAL w.r.t. COT remains. This is shown in Figure 5.
+
+#+CAPTION: Solve rate for different LMs [cite:@gao2023pal]
+#+NAME: Figure 5
+#+ATTR_HTML: :width 700px
+[[./images/varying_lm_size.png]]
+
+** Performance with text LMs.
+The authors noted that if the underlying LM has "weak code modeling
+ability" then COT performs better than PAL. They surmise that
+=text-davinci-001= has weak code modeling abilities and
+=text-davinci-002= and =text-davinci-003= have progressively better
+code modeling abilities even though they are primarly text LMs. They
+note that for =text-davinci-001= COT is better than PAL, but for
+=text-davinci-002= and =text-davinci-003= PAL is better than COT,
+because the code modeling ability of these text LMs as passed an
+unspecified/unknown critical threshold.
+
+#+CAPTION: Solve rate for text LMs [cite:@gao2023pal]
+#+NAME: Figure 6
+#+ATTR_HTML: :width 700px
+[[./images/text_lms.png]]
+
+** Is PAL better because of Python style prompts?
+The authors tested the unlikely possibility that the PAL
+outperformance is due to the use of python style prompts in the
+context. This possbility was rejected after noticing that forcing the
+LM to execute the generated code caused poor performance similar to
+direct prompting.
+
+** Impact of variable names
+Since the variable names are unimportant to the Python interpreter, we
+need to ask ourselves the impact that meaningful variable names have
+on the decomposition steps produced by the LM. Since meaningful
+variable names connect the generated code/steps with the natural
+language description in the context, it is expected that the use of
+meaningful variable names has a marked impact on the generated
+decomposition steps. This was confirmed by performing experiments
+where the context was altered by first removing comments and then
+substituting meaningful variable names with random variable names. In
+both the cases the performance of PAL decreased.
+
+#+CAPTION: Impact of comments and variable names
+#+NAME: Figure 7
+#+ATTR_HTML: :width 700px
+[[./images/variable_names.png]]
+
+* Conclusion
+The authors presented a technique named PAL that allows the LM to
+offload decomposition steps to a Python interpreter. Using experiments
+over a wide range of problems, the authors demonstrated that this
+approach performs better than direct prompting or chain of thought
+prompting.
+
+* Bibliography
+#+print_bibliography:
