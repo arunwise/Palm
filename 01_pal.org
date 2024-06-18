@@ -48,7 +48,7 @@ example PAL prompt is shown below.
 #+CAPTION: PAL example [cite:@gao2023pal]
 #+NAME: Figure 1
 #+ATTR_HTML: :width 700px
-[[./images/pal_example_1.png]]
+[[./images/pal_paper/pal_example_1.png]]
 
 * Experimental setup
 The PAL approach was compared against direct prompting and COT
@@ -104,12 +104,12 @@ decreases the language model performance.
 #+CAPTION: Results for mathematical reasoning [cite:@gao2023pal]
 #+NAME: Figure 2
 #+ATTR_HTML: :width 700px
-[[./images/pal_mathematical_problems.png]]
+[[./images/pal_paper/pal_mathematical_problems.png]]
 
 #+CAPTION: Results for symbolic and algorithmic reasoning [cite:@gao2023pal]
 #+NAME: Figure 3
 #+ATTR_HTML: :width 700px
-[[./images/pal_symbolic_algorithmic_problems.png]]
+[[./images/pal_paper/pal_symbolic_algorithmic_problems.png]]
 
 
 * Analysis
@@ -147,7 +147,7 @@ sets task is increased. See Figure 4.
 #+CAPTION: Solve rate for varying complexity [cite:@gao2023pal]
 #+NAME: Figure 4
 #+ATTR_HTML: :width 700px
-[[./images/colored_objects_complexity.png]]
+[[./images/pal_paper/colored_objects_complexity.png]]
 
 ** Impact of LM size on performance.
 The authors evaluated the impact of the size of the LM on the
@@ -157,7 +157,7 @@ outperformance of PAL w.r.t. COT remains. This is shown in Figure 5.
 #+CAPTION: Solve rate for different LMs [cite:@gao2023pal]
 #+NAME: Figure 5
 #+ATTR_HTML: :width 700px
-[[./images/varying_lm_size.png]]
+[[./images/pal_paper/varying_lm_size.png]]
 
 ** Performance with text LMs.
 The authors noted that if the underlying LM has "weak code modeling
@@ -173,7 +173,7 @@ unspecified/unknown critical threshold.
 #+CAPTION: Solve rate for text LMs [cite:@gao2023pal]
 #+NAME: Figure 6
 #+ATTR_HTML: :width 700px
-[[./images/text_lms.png]]
+[[./images/pal_paper/text_lms.png]]
 
 ** Is PAL better because of Python style prompts?
 The authors tested the unlikely possibility that the PAL
@@ -197,7 +197,7 @@ both the cases the performance of PAL decreased.
 #+CAPTION: Impact of comments and variable names
 #+NAME: Figure 7
 #+ATTR_HTML: :width 700px
-[[./images/variable_names.png]]
+[[./images/pal_paper/variable_names.png]]
 
 * Conclusion
 The authors presented a technique named PAL that allows the LM to
