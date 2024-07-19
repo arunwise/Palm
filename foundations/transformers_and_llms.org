@@ -1,0 +1,86 @@
+#+TITLE: Transformers and Large Language Models (note based on SLP 3rd edition)
+#+AUTHOR: N. Arun Varma
+
+We learn/know lot more words than we deploy in day to day
+interactions. Most of these words are not learned through formal
+training.
+
+The mechanism for vocabulary learning is probably one in which
+majority of the meaning is learned at a late stage through formation
+of connections between words. At that point the rate of introduction
+of new words is far less than the number of new words being
+learned. So all the new words observed so far start falling into
+place.
+
+Distributional hypothesis proposed as a possible mechanism to explain
+this rate of learning. The idea loosely is that meanings are learned
+not through grounding in real world, instead by solely relying on the
+context in which words occur (i.e., co-occurrence patterns of words).
+
+
+* Transformers
+
+Transformers are made up of a stack of transformer blocks, each of
+which is a multilayer network that maps sequences of input vectors
+$(x_1, ldots, x_n)$ to sequences of output vectors of the same length
+$(z_1, \ldots, z_n)$. It is clear that the length of the output
+sequence is same as the length of the input sequence. What is not
+clear is if the length of each element in the output sequence is same
+as the length of the corresponding element in the input sequence.
+
+At each layer of a transformer, to compute the representation of a
+word i we combine information from the representation of word i at the
+previous layer with information from the representations of the
+neighboring words.
+
+From the above description it is clear that the transformer
+architecture has two dimensions. One is the feed-forward dimension of
+layers, the other is the dimensions across a span of words.
+
+Self attention is a mechanism for computing representations of words
+by taking the context into account. It provides us with a mechanism to
+compute representations of words by weighing the representations of
+the context in which it occurs.
+
+But why is this called self attention? The computation is parallelized
+so that each word tries to learn a represenation for itself? Such a
+bizzare name. There is such a thing as self attention distribution.
+This must be a proper probability distribution.
+
+How exactly are representations combined using self attention
+distributions/weights?
+
+The self-attention weights can be backward looking or bi-directional.
+
+How exactly is the attention weight calculated. It is calculated by
+comparing words/tokens of interest in a way that reveals their
+relevance in the current context. How shall we compare words to other
+words? We know that in deep learning embeddings/vectors are used as
+representations and dot product is normally used to find similarity.
+
+Given two vectors/embeddings/representations, the attention is
+calculated by normalizing the dot products as follows:
+
+$\alpha_{ij} = softmax(score(x_i, x_j)), \forall j \leq i$
+
+Next, when we have the attention values $\alpha_{ij}$, the representation
+is computed by taking a linear combination of previous representations.
+
+$a_i = \sum_{j \leq i} \alpha_{ij}x_j$
+
+The most confusing thing about the transformer model is that while we
+are constructing representations of words as a weighted average of
+represenations of neighboring words, the weights are computed using a
+different set of representations. Each word is given a query and a key
+embedding and it is the dot product of these embeddings that is used
+to calculate the attention weights between words in a context. Once
+the attention weights are calculated they are used to combine a
+different set of representations -- the value embeddings.
+
+To capture these three different roles, transformers introduce weight
+matrices $W^Q, W^K$ and $W^V$. These weights are used to project the
+input vectors $x_i$ into the query, key and value vectors.
+
+$q_i = x_i W^Q; k_i = x_i W^K; v_i = x_i W^V$
+
+
