@@ -63,8 +63,9 @@ calculated by normalizing the dot products as follows:
 
 $\alpha_{ij} = softmax(score(x_i, x_j)), \forall j \leq i$
 
-Next, when we have the attention values $\alpha_{ij}$, the representation
-is computed by taking a linear combination of previous representations.
+Next, when we have the attention values $\alpha_{ij}$, the
+representation is computed by taking a linear combination of previous
+representations.
 
 $a_i = \sum_{j \leq i} \alpha_{ij}x_j$
 
@@ -77,6 +78,24 @@ to calculate the attention weights between words in a context. Once
 the attention weights are calculated they are used to combine a
 different set of representations -- the value embeddings.
 
+The query embedding is the representation of the token for which we
+are seeking to compute a contextual embedding. Obviously this means
+that the query embedding itself does not capture all of the context in
+which the token occurs. It is instead used the embedding to be used
+for comparing with other tokens.
+
+They key embedding is the representation of a token used to evaluate
+its relevance to the query token.
+
+One key observation is the asymmetry between query and key
+embeddings. Note that the query embedding of a token is used only once
+when computing attention weights of a token. In all other
+computations, its key embeddings are used for computing attention
+weights.
+
+Finally the value embedding is the embedding that is used to construct
+contextual embeddings.
+
 To capture these three different roles, transformers introduce weight
 matrices $W^Q, W^K$ and $W^V$. These weights are used to project the
 input vectors $x_i$ into the query, key and value vectors.
@@ -84,3 +103,92 @@ input vectors $x_i$ into the query, key and value vectors.
 $q_i = x_i W^Q; k_i = x_i W^K; v_i = x_i W^V$
 
 
+The attention score of token $i$ for token $j$ (i.e., the attention
+paid by token $j$ in the context of token $i$) is computed by taking
+the dot product of the query vector of $i$ and key vector of $j$.
+
+$score(x_i, x_j) = q_i \cdot k_j$
+
+But $q_i = x_i W^Q$ and $k_j = x_j W^k$.
+
+Next the attention weights are normalized.
+
+$\alpha_{ij} = softmax(score(x_i, x_j))$. For calculating backward
+attention we can zero out $score(x_i, x_j)$ values where $i < j$.
+
+Next the output representation $a_i$ is calculated as the weighted sum
+of value vectors$
+
+$a_i = \sum_{j \leq i} \alpha_{ij} v_j$
+
+
+** Parallelizing the operations
+Let us assume that the shape of each $x_i$ is 1 x d. This means that we can represent all the
+input vectors as a matrix $X$ whose shape is n x d. Now let us assume that the matrices $W^Q$ and
+$W^K$ which project the input vectors into query and key vectors have shape $d x d_k$. This means
+that the query and key vector representations can be computed by matrix multiplications as follows
+
+
+$Q = X W^Q$ and $K = X W^K$.
+
+The shape of these matrices is n x d_k.
+
+Now comes the question of computing self attention weights. Remember
+that self attention is computed for a single input as the dot product
+of its query and key vectors of its neighbors. So we are essentially
+multiplying q_i with transpose of k_j$. We can parallelize this by
+multiplying $Q$ and $K^T$. The result of this operation is an n x n
+matrix of scores. We can zero out the weights for tokens that follow
+the current token. Essentially we can zero out the upper triangular
+portion of this matrix.
+
+Next we divide the entire matrix by $\sqrt(d_k)$ and compute softmax
+for each row.
+
+Finally we need to compute the output representations. Remember that
+the value embeddings have shape $1 x d_v$. This means that the $W^v$
+matrix is shaped $d x d_v$. The $V$ matrix is computed as
+
+$V = X W^v$
+
+The output representaion of a single word $i$ is $\sum_{j}
+alpha_{ij}*v_j$. Note that since we have zeroed out the necessary
+elements we can sum over all indices $j$. This operation can be
+paralellized with matrix multiplication.
+
+$A = \alpha V$.
+
+Note the shape of the alpha matrix is $n x n$ and the shape of the
+output representation is $n x d_v$ which is what we want.
+
+** Multihead attention
+
+The above idea of computing representations using attention weights
+and query, key and value embeddings is generalized by using multiple
+representations for capturing multiple aspects of the domain. In the
+case of NLP this means that each token gets multiple representations
+-- while one embedding may capture grammatical number another may
+capture coreference and yet another may capture word sense etc.
+
+They way multihead attention is implemented is by repeating the
+self-attention calculation multiple times.  So instead of a single
+$W^Q, W^K$ and $W^V$ vectors we have separate $W_{i}^Q, W_{i}^K$ and
+$W_{i}^V$ matrices for each "head". Note that the indices are over the
+heads and not tokens.
+
+This means that we get multiple output matrices $A_i$. These are
+concatenated together to get the multihead representation.
+
+At this point we are able to answer an earlier question that we raised
+about the size of the output vectors.  According to the discussion of
+multihead attention the size of the output representation is same as
+the size of the input representation. In other words the
+representation computed by a single head $A_i$ has the shape $N x
+d_v$, but to project the output back to shape of the inputs i.e., $N x
+d$, the transformer model uses another linear projection
+operation. The multiple output representations that are computed get
+packed into a matrix of shape $N x hd_v$ where $h$ is the number of
+heads. These are projected back into a matrix of final representation
+of shape $N x d$ by using another matrix $W^O$ shaped $hd_v x d$. This
+completes the description of the attention mechanism in transformer
+model.

@@ -1,0 +1,29 @@
+repos:
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black", "--skip-gitignore"]
+  - repo: https://github.com/ambv/black
+    rev: 24.4.2
+    hooks:
+      - id: black # perform automatic code reformatting
+        language_version: python3 # more permissive of python 3.6 or 3.7
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.0
+    hooks:
+      - id: flake8
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-merge-conflict # garbage in...
+      - id: name-tests-test # ensures all files end with '_test'
+        args: ["--pytest-test-first"]
+      - id: check-json # parses json -- maybe we should pretty print?
+      - id: debug-statements # don't be that guy
+      - id: trailing-whitespace # transform this
+      - id: end-of-file-fixer # adds newline at end of files
+      - id: check-byte-order-marker # reads 3 bytes from each staged file ensuring that it doesn't have b'\xef\xbb\xbf'
+      - id: check-added-large-files # ensures a large file hasn't been committed
+      - id: detect-private-key # keep those keys safe
+      - id: check-symlinks # check for broken symlinks

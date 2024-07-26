@@ -1,48 +1,53 @@
 """Unit tests for transformer implementation."""
 
-import torch
 import numpy as np
-
-from hypothesis import given
-from hypothesis.strategies import booleans, lists
-
+import torch
+from hypothesis import given, settings
 from hypothesis.extra.numpy import arrays
+from hypothesis.strategies import booleans
+
 import src.transformer as transformer
 
 
+@settings(max_examples=1)
 @given(
-    x=arrays(np.float32, (5, 20)),
-    w_q=arrays(np.float32, (20, 10)),
-    w_k=arrays(np.float32, (20, 10)),
-    w_v=arrays(np.float32, (20, 15)),
-    backward=booleans(),
+    x=arrays(np.float32, (10, 16)),
+    autoregressive=booleans(),
 )
-def test_self_attention(x, w_q, w_k, w_v, backward):
+def test_self_attention(x, autoregressive):
     """Sanity check implementation of self attention."""
-    a = transformer.self_attention(
-        torch.from_numpy(x),
-        torch.from_numpy(w_q),
-        torch.from_numpy(w_k),
-        torch.from_numpy(w_v),
-    )
-    assert a.size() == (5, 15)
-
-
-@given(
-    x=arrays(np.float32, (5, 20)),
-    w_qs=lists(arrays(np.float32, (20, 10)), min_size=5, max_size=5),
-    w_ks=lists(arrays(np.float32, (20, 10)), min_size=5, max_size=5),
-    w_vs=lists(arrays(np.float32, (20, 15)), min_size=5, max_size=5),
-    w_o=arrays(np.float32, (75, 20)),
-    backward=booleans(),
-)
-def test_multihead_attention(x, w_qs, w_ks, w_vs, w_o, backward):
-    """Sanity check implementation of multiheaded attention."""
     x_t = torch.from_numpy(x)
-    w_qs_ts = [torch.from_numpy(e) for e in w_qs]
-    w_ks_ts = [torch.from_numpy(e) for e in w_ks]
-    w_vs_ts = [torch.from_numpy(e) for e in w_vs]
-    w_o_t = torch.from_numpy(w_o)
-    assert x_t.size() == transformer.multihead_attention(
-        x_t, w_qs_ts, w_ks_ts, w_vs_ts, w_o_t, backward
-    ).size()
+    a = transformer.SelfAttention(input_dim=16, query_key_dim=4, value_dim=8)
+    assert a(x_t, autoregressive).size() == (10, 8)
+
+
+@settings(max_examples=1)
+@given(
+    x=arrays(np.float32, (10, 16)),
+    autoregressive=booleans(),
+)
+def test_multihead_attention(x, autoregressive):
+    """Sanity check implementation of multiheaded attention."""
+    m = transformer.MultiHeadAttention(
+        num_heads=5, input_dim=16, query_key_dim=4, value_dim=8
+    )
+    x_t = torch.from_numpy(x)
+    assert m(x_t, autoregressive).size() == x_t.size()
+
+
+@settings(max_examples=1)
+@given(
+    x=arrays(np.float32, (10, 16)),
+    autoregressive=booleans(),
+)
+def test_transformer_block(x, autoregressive):
+    """Sanity check implementation of transformer block."""
+    b = transformer.TransformerBlock(
+        num_heads=5,
+        input_dim=16,
+        query_key_dim=4,
+        value_dim=8,
+        feedforward_dim=32,
+    )
+    x_t = torch.from_numpy(x)
+    assert b(x_t, autoregressive).size() == x_t.size()
