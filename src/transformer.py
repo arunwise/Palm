@@ -173,3 +173,23 @@ class TransformerBlock(nn.Module):
         out = self.layernorm_2(out + self.feed_forward(out))
 
         return out
+
+
+def positional_encoding(token_embedding: torch.Tensor, position: int) -> torch.Tensor:
+    """Compute the positional encoding as described in the Transformers paper.
+
+    :param token_embedding: 1d tensor containing embedding of the token.
+    :param position: zero based position of the token.
+    :return: a positional encoding for the token
+    """
+    dimensions = token_embedding.size(0)
+    idx_range = torch.arange(dimensions, device=token_embedding.device)
+    halved_idxs = torch.div(idx_range, 2, rounding_mode="trunc")
+    even_indices = torch.fmod(idx_range, 2).bool().logical_not()
+    scaling_factor = torch.pow(10000, 2 * halved_idxs / dimensions)
+    positional_embedding = torch.where(
+        even_indices,
+        torch.sin(position / scaling_factor),
+        torch.cos(position / scaling_factor),
+    )
+    return positional_embedding

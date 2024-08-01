@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from hypothesis import given, settings
 from hypothesis.extra.numpy import arrays
-from hypothesis.strategies import booleans
+from hypothesis.strategies import booleans, integers
 
 import src.transformer as transformer
 
@@ -51,3 +51,12 @@ def test_transformer_block(x, autoregressive):
     )
     x_t = torch.from_numpy(x)
     assert b(x_t, autoregressive).size() == x_t.size()
+
+
+@settings(max_examples=1)
+@given(x=arrays(np.float32, (10,)), position=integers(0, 9999))
+def test_positional_encoding(x, position):
+    """Sanity check implementation of positional encoding."""
+    x_t = torch.from_numpy(x)
+    positional_embedding = transformer.positional_encoding(x_t, position)
+    assert positional_embedding.size() == x_t.size()
