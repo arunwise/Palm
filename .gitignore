@@ -162,3 +162,6 @@ cython_debug/
 #.idea/
 /01_pal.html
 /02_prolog_arithmetic.html
+/foundations/transformers_and_llms.html
+/foundations/transformers_and_llms.pdf
+/foundations/transformers_and_llms.tex

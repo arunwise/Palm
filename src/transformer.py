@@ -38,9 +38,8 @@ class SelfAttention(nn.Module):
         query_embeddings = torch.matmul(x, self.w_q)
         key_embeddings = torch.matmul(x, self.w_k)
         value_embeddings = torch.matmul(x, self.w_v)
-        attention_score = torch.matmul(
-            query_embeddings, key_embeddings.t()
-        ) / math.sqrt(self.query_key_dim)
+        attention_score = torch.matmul(query_embeddings, key_embeddings.t())
+        attention_score = attention_score / math.sqrt(self.query_key_dim)
 
         if autoregressive:
             # mask future tokens for autoregressive modeling

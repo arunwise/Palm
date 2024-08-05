@@ -1,194 +1,322 @@
-#+TITLE: Transformers and Large Language Models (note based on SLP 3rd edition)
+#+TITLE: Transformers
 #+AUTHOR: N. Arun Varma
+#+bibliography: /Users/arun/bibliography/bibliography.bib
+#+ATTR_HTML: align middle
 
-We learn/know lot more words than we deploy in day to day
-interactions. Most of these words are not learned through formal
-training.
+* Introduction
+The transformer architecture introduced in the paper by
+[cite:@vaswani2017attention] has become the de-facto choice for
+language modeling. The transformer model is based on the central idea
+of */self-attention/* which can be loosely described as computing
+representation for a given token by composing the representations of
+tokens in its neighborhood weighted by their relevance. The
+effectiveness of the transformer architecture stems from the fact that
+unlike earlier models which were based on recurrent neural networks,
+the transformer architecture lends itself to GPU parallelism and can
+be trained efficiently (compared to RNNs) on extremely large corpora.
 
-The mechanism for vocabulary learning is probably one in which
-majority of the meaning is learned at a late stage through formation
-of connections between words. At that point the rate of introduction
-of new words is far less than the number of new words being
-learned. So all the new words observed so far start falling into
-place.
+The transformer based models have been amazingly successful over a
+wide range of NLP tasks including question answering, text
+summarization, sentiment detection, translation, creative writing etc.
+While the successes are well recognized there is also a sense of
+concern about the resources required to train and infer using these
+models, their propensity to hallucinate, privacy concerns, copyright
+infringement and perhaps most importantly the lack of guarantees in
+settings that require responses to be grounded in facts and domain
+knowledge. Some of the popular Large Language Models (LLMs) based on
+the transformer architecture are show in [[llms][Table 1.]] (source: Wikipedia).
 
-Distributional hypothesis proposed as a possible mechanism to explain
-this rate of learning. The idea loosely is that meanings are learned
-not through grounding in real world, instead by solely relying on the
-context in which words occur (i.e., co-occurrence patterns of words).
-
-
-* Transformers
-
-Transformers are made up of a stack of transformer blocks, each of
-which is a multilayer network that maps sequences of input vectors
-$(x_1, ldots, x_n)$ to sequences of output vectors of the same length
-$(z_1, \ldots, z_n)$. It is clear that the length of the output
-sequence is same as the length of the input sequence. What is not
-clear is if the length of each element in the output sequence is same
-as the length of the corresponding element in the input sequence.
-
-At each layer of a transformer, to compute the representation of a
-word i we combine information from the representation of word i at the
-previous layer with information from the representations of the
-neighboring words.
-
-From the above description it is clear that the transformer
-architecture has two dimensions. One is the feed-forward dimension of
-layers, the other is the dimensions across a span of words.
-
-Self attention is a mechanism for computing representations of words
-by taking the context into account. It provides us with a mechanism to
-compute representations of words by weighing the representations of
-the context in which it occurs.
-
-But why is this called self attention? The computation is parallelized
-so that each word tries to learn a represenation for itself? Such a
-bizzare name. There is such a thing as self attention distribution.
-This must be a proper probability distribution.
-
-How exactly are representations combined using self attention
-distributions/weights?
-
-The self-attention weights can be backward looking or bi-directional.
-
-How exactly is the attention weight calculated. It is calculated by
-comparing words/tokens of interest in a way that reveals their
-relevance in the current context. How shall we compare words to other
-words? We know that in deep learning embeddings/vectors are used as
-representations and dot product is normally used to find similarity.
-
-Given two vectors/embeddings/representations, the attention is
-calculated by normalizing the dot products as follows:
-
-$\alpha_{ij} = softmax(score(x_i, x_j)), \forall j \leq i$
-
-Next, when we have the attention values $\alpha_{ij}$, the
-representation is computed by taking a linear combination of previous
-representations.
-
-$a_i = \sum_{j \leq i} \alpha_{ij}x_j$
-
-The most confusing thing about the transformer model is that while we
-are constructing representations of words as a weighted average of
-represenations of neighboring words, the weights are computed using a
-different set of representations. Each word is given a query and a key
-embedding and it is the dot product of these embeddings that is used
-to calculate the attention weights between words in a context. Once
-the attention weights are calculated they are used to combine a
-different set of representations -- the value embeddings.
-
-The query embedding is the representation of the token for which we
-are seeking to compute a contextual embedding. Obviously this means
-that the query embedding itself does not capture all of the context in
-which the token occurs. It is instead used the embedding to be used
-for comparing with other tokens.
-
-They key embedding is the representation of a token used to evaluate
-its relevance to the query token.
-
-One key observation is the asymmetry between query and key
-embeddings. Note that the query embedding of a token is used only once
-when computing attention weights of a token. In all other
-computations, its key embeddings are used for computing attention
-weights.
-
-Finally the value embedding is the embedding that is used to construct
-contextual embeddings.
-
-To capture these three different roles, transformers introduce weight
-matrices $W^Q, W^K$ and $W^V$. These weights are used to project the
-input vectors $x_i$ into the query, key and value vectors.
-
-$q_i = x_i W^Q; k_i = x_i W^K; v_i = x_i W^V$
+#+CAPTION: Popular LLMs
+#+NAME: llms
+#+ATTR_HTML: align right
+| Name         | Parameters[fn::in billions]  | Organization | Open Source | Remarks                                       |
+|--------------+-----------------------+--------------+-------------+-----------------------------------------------|
+| Bert         |                 0.340 | Google       | Yes         | Encoder-only model                            |
+| Phi-2        |                   2.7 | Microsoft    | Yes         | Trained on text-book quality data.            |
+| Mistral 7B   |                     7 | Mistral AI   | Yes         |                                               |
+| T5           |                    11 | Google       | Yes         | Base model for many Google projects.          |
+| BloombergGPT |                    50 | Bloomberg    | No          | Trained on financial data                     |
+| Claude       |                    52 | Anthropic    | ?           | Fine tuned fore responsible chat behavior.    |
+| Chinchilla   |                    70 | DeepMind     | No          | Reduced parameter model trained on more date. |
+| LLama 2      |                    70 | Meta AI      | No          |                                               |
+| GPT-3        |                   175 | OpenAI       | No          | The base model behind the popular ChatGPT.    |
+| Llama 3      |                   405 | Meta AI      | No          |                                               |
 
 
-The attention score of token $i$ for token $j$ (i.e., the attention
-paid by token $j$ in the context of token $i$) is computed by taking
-the dot product of the query vector of $i$ and key vector of $j$.
 
-$score(x_i, x_j) = q_i \cdot k_j$
+* Self attention
+Self attention is the central concept behind the Transformer
+model. Informally self-attention is a mechanism for computing the
+embedding of a token from the embeddings of the tokens in the
+neighborhood while weighing them based on relevance.
 
-But $q_i = x_i W^Q$ and $k_j = x_j W^k$.
+More formally consider a set of tokens $x_1,\ldots,x_n$ and their
+embeddings $v_1,\ldots,v_n$. At its core self attention is the
+following computation that yields a new embedding $a_i$ for token
+$x_i$
 
-Next the attention weights are normalized.
+\begin{equation}
+a_i = \sum_{j} \alpha_{ij}v_j
+\end{equation}
 
-$\alpha_{ij} = softmax(score(x_i, x_j))$. For calculating backward
-attention we can zero out $score(x_i, x_j)$ values where $i < j$.
+Here $\alpha_{ij}$ are the relevance weights (i.e., relevance of token
+$x_j$ in the computation of the embedding for $x_i$). The relevance
+weights are naturally computed using the dot product which measures
+the similarity of the two tokens. However, instead of using the
+existing embeddings $V$ to compute relevance weights, the transformer
+model uses two distinct sets of embeddings that indicate the roles
+being performed by the tokens in the computation:
+1. Query embeddings: the embedding of $x_i$ in its role as the token
+   for which a new embedding is being computed.
+2. Key embeddings: the embedding of $x_j$ in its role as the token
+   being compared to $x_i$ in the computation of relevance weights.
 
-Next the output representation $a_i$ is calculated as the weighted sum
-of value vectors$
+For a single token with input embedding $x_i$, its query, key and
+value embeddings are computed by using projection matrices $W^Q, W^K$
+and $W^V$.
 
-$a_i = \sum_{j \leq i} \alpha_{ij} v_j$
+\begin{align}
+q_i &= x_i  W^Q\\
+k_i &= x_i  W^K\\
+v_i &= x_i  W^V
+\end{align}
+
+The relevance weights $\alpha_{ij}$ are computed by first taking the
+dot product $q_i k_j^T$ and normalizing it using a softmax.
+
+\begin{equation}
+\alpha_{ij} = \frac{exp(q_i k_j^T)}{\sum_j exp(q_i k_j^T)}
+\end{equation}
+
+Finally the new embedding of $x_i$ denoted $a_i$ is computed as
+
+\begin{equation}
+a_i = \sum_j \alpha_{ij}v_j
+\end{equation}
+
+Code snippets implementing the idea of self-attention is shown below
+#+INCLUDE: "../src/transformer.py" src python :lines "38-42"
+#+INCLUDE: "../src/transformer.py" src python :lines "48-50"
+
+** Scaled self attention
+The self attention used in the transformer model is a slightly
+modified version of the self attention described above. In particular,
+the relevance weights are "moderated" before being input to the
+softmax function. This is done because the result of the dot product
+attention can be very large or very small and when exponentiated can
+give rise to extreme values where gradients may not be effectively
+computed. Concretely the dot product attention is "scaled" by dividing
+it by the square root of the number of dimensions of the embeddings
+being used. The number of dimensions of the query and key embeddings
+are same and let it be denoted $d_k$. The scaled dot product attention is
+
+\begin{equation}
+\frac{q_i k_j^T}{\sqrt{d_k}}
+\end{equation}
+
+In terms of code it is
+#+INCLUDE: "../src/transformer.py" src python :lines "42-43"
+
+** Backward a.k.a "causal" self attention
+When transformers are used for "auto-regressive" or "causal" language
+modeling[fn::contrived way of saying modeling for next word
+prediction. Causality is a well defined term in AI but has been
+bastardized by the DL community], the embedding of a token is computed
+only from the tokens that precede it in the context. In order to
+preserve the GPU parallelism it is common to replace the relevance
+weights of succeeding tokens with $- \infty$ and computing the
+attention probabilities as usual.
+
+** Parallel computation
+In practice, the self attention computations of all tokens in the
+context window is performed in a batched fashion by leveraging
+efficient matrix multiplication implemented by GPUs. Consider
+- $X$ to be an $N \times d$ matrix that contains the input embeddings
+  of $N$ tokens in the context window.
+- $W^Q$ is the matrix to project input embeddings to query
+  embeddings. It is shaped $d \times d_k$
+- $W^K$ is the matrix to project input embeddings to key
+  embeddings. It is shaped $d \times d_k$
+- $W^V$ is the matrix to project input embeddings to value
+  embeddings. It is shaped $d \times d_v$.
+
+We can describe the parallel computation of scaled dot product
+attention as follows
+\begin{align}
+Q &= X W^Q\\
+K &= X W^K\\
+V &= X W^V\\
+\alpha &= softmax\left(\frac{QK^T}{\sqrt{d_k}}\right)\\
+A &= \alpha V
+\end{align}
+
+The above code snippets are general enough that they can be used for
+batched computation without any changes. The complete code that
+implements scaled dot product attention in shown below.
+
+#+INCLUDE: "../src/transformer.py" src python :lines "9-50"
+
+* Multihead attention
+Multihead attention is the generalization of the self-attention
+concept that computes multiple representations/embeddings for each
+token. The motivation behind multihead attention is that a token might
+be related to nearby tokens in multiple ways and a single
+self-attention mechanism may not capture all the details. In this way
+one can compose an embedding from nearby embeddings by using
+grammatical number, coreference, word sense etc. The final step of the
+multihead attention computation involves projecting the concatenated
+embeddings back to the embeddings of the same dimensionality as the
+input embeddings.
+
+More formally let $W_i^Q, W_i^K$ and $W_i^V$ denote the query, key and
+value projection matrices for "head" $i$. Given a matrix of input
+embeddings $X$, the self-attention computation for each head proceeds
+as before yielding $A_i$. The final output of the multihead attention
+module involves concatenating the $A_i$ and projecting back to input
+space by using a matrix shaped $hd_v \times d$ where $h$ is the number
+of heads and $d_v$ is the dimensionality of value embeddings as
+before. Let $\oplus$ denote concatenation of matrices, then the final
+output of multihead attention is computed as
+
+\begin{equation}
+O = (head_1 \oplus head_2 \cdots \oplus head_h)W^O
+\end{equation}
+
+The implementation of multihead attention in code is shown below
+
+#+INCLUDE: "../src/transformer.py" src python :lines "52-92"
+
+** Residual view of the transformer
+The residual stream view of the transformer presents a picture of
+input embeddings passing through the transformer to the output of the
+transformer.  Along the way the output of multiheaded attention and
+the output of the feedforward network get added to the stream. Further
+only multihead attention looks at other inputs in the neighborhood,
+whereas the feedforward network looks only at the token for the
+current residual stream.
+
+The multihead transformers can be viewed as moving information from
+other residual streams into the current one.
+
+* Transformer blocks
+A transformer block consists of multihead attention together with a
+feedforward network, residual connections and normalizing layers.
+
+** Input embeddings
+The input to the transformer model is a matrix of embeddings. More
+specifically its a matrix of shape N x d where N is the number of tokens
+in the context and d is the embedding dimensionality. The embeddings
+are learned representations. In order to capture the positions of the
+tokens positional embeddings are used.
+
+The specific positional embeddings used in the transformer paper are
+based on sine and cosine functions. The idea is to input the word
+position as input to the sine and cosine functions interpreting it as
+the angle in radians. A single sine function or cosine function or
+even a pair will not suffice because multiple positions get mapped to
+the same result. Therefore the embedding uses many dimensions. The
+even dimensions get their value from sine function and the odd
+dimensions get their value from cosine functions. Further the
+wavelengths of the various sine and cosine functions is
+changed. Specifically the wavelengths of leftmost dimensions is
+shorter.
+
+** Language modeling head
+Recall that the construction of the transformer model maps input
+embeddings to output embeddings. The mapping has the property that
+output embedding for the last token represents the next token in the
+sequence. Given an embedding representing the next token in the
+sequence we need additional machinery to generate the actual token.
+
+Note that the output embedding is not one-hot encoded
+vector. Therefore when we multiply it with an unembedding matrix we
+get the weights of each possible next token. These weights can be
+converted to a probability distribution using a softmax
+function. Finally we can use the probability distribution to sample
+the next token.
+
+The additional machinery which does this is called the language
+modeling head. Typically the unembedding matrix not a separate tunable
+parameter.  Instead it is just the transpose of the embedding matrix.
 
 
-** Parallelizing the operations
-Let us assume that the shape of each $x_i$ is 1 x d. This means that we can represent all the
-input vectors as a matrix $X$ whose shape is n x d. Now let us assume that the matrices $W^Q$ and
-$W^K$ which project the input vectors into query and key vectors have shape $d x d_k$. This means
-that the query and key vector representations can be computed by matrix multiplications as follows
+* Why are transformers good as Language Models?
+Most of the tasks that the transformers are used for can be posed as
+conditional generation tasks. Language models are naturally suited to
+these tasks because they encode joint distribution of
+sentences. Moreover transformers have the advantage of having very
+long context windows for conditional generation which enables them to
+condition on the priming context as well as their own generated
+output.
+
+The insight of large language modeling is that many practical
+applications can be cast as conditional generation. Consider the task
+of sentiment analysis.  At a first glance, it looks like a
+classification problem. But we can use the following prompt to recast
+the classification problem to a conditional generation problem.
+
+Given the following piece of text
+
+"lore ipsum blah blah blah..".
+
+The sentiment expressed in the text is ?
 
 
-$Q = X W^Q$ and $K = X W^K$.
+It is quite wierd to think about it, but it looks like any conceivable
+problem can be cast as a conditional generation problem because any
+problem can be posed as a question in natural language and large
+language models are excellent at modeling the joint distribution of
+natural language sentences.
 
-The shape of these matrices is n x d_k.
+Heck we can even pose complex questions like graph reachability by
+simply describing the graph in natural language and asking if there
+exists a path between a pair of nodes? Instead of algorithmically
+solving the question, the large language model uses autoregressive
+modeling to solve the question.
 
-Now comes the question of computing self attention weights. Remember
-that self attention is computed for a single input as the dot product
-of its query and key vectors of its neighbors. So we are essentially
-multiplying q_i with transpose of k_j$. We can parallelize this by
-multiplying $Q$ and $K^T$. The result of this operation is an n x n
-matrix of scores. We can zero out the weights for tokens that follow
-the current token. Essentially we can zero out the upper triangular
-portion of this matrix.
+For another interesting example, consider the task of text
+summarization.  Here the key idea is to use a natural language prompt
+to guide the large language model to produce a summary.  It is common
+practice in written communication to use the abbreviation tl;dr to
+summarize long emails/notes. So prompting the large language model in
+the following way could make it produce a summary
 
-Next we divide the entire matrix by $\sqrt(d_k)$ and compute softmax
-for each row.
+"lore ipsum blah blah blah...."
 
-Finally we need to compute the output representations. Remember that
-the value embeddings have shape $1 x d_v$. This means that the $W^v$
-matrix is shaped $d x d_v$. The $V$ matrix is computed as
+tl;dr;
 
-$V = X W^v$
+To reiterate large language models succeed at these tasks because
+their large context windows allow them to pay attention to not just
+the prompt, but also their generated text throughout the process.
 
-The output representaion of a single word $i$ is $\sum_{j}
-alpha_{ij}*v_j$. Note that since we have zeroed out the necessary
-elements we can sum over all indices $j$. This operation can be
-paralellized with matrix multiplication.
+The completion can be done in several ways. One could use greedy
+sampling in which we always choose the most probable next word. This
+is a locally optimal solution, but may not result in the best possible
+completion overall. The other choices are beam sampling where we
+maintain a pool of best candidate solution and extend them while
+keeping the size of the pool constant. Finally we have probabilistic
+sampling in which completions are generated according to the joint
+distribution.
 
-$A = \alpha V$.
+The field of deep learning is very good at bastardizing terms. The
+conditional generation is also called as autoregressive generation and
+causal language modeling. It should be noted that terms
+"autoregressive" and "causal" are precise technical terms with long
+histories.
 
-Note the shape of the alpha matrix is $n x n$ and the shape of the
-output representation is $n x d_v$ which is what we want.
 
-** Multihead attention
+There are some variations of random sampling
+- Top k sampling. Keep only the top k words by probability,
+  renormalize the distribution and sample from it.
+- Top p sampling/nucleus sampling. Keep the highest probability words
+  that together constitute probability mass of p. Renormalize and
+  sample from the distribution
+- Temperature sampling. Divide the logits by temperature. When
+  temperature is high (i.e., close to 1), it returns the original
+  distribution and hence "samples from a wide range". When temperature
+  is close to zero the division causes larger values to become more
+  extreme. So the resulting distribution places most of the
+  probability mass on a few choices.
 
-The above idea of computing representations using attention weights
-and query, key and value embeddings is generalized by using multiple
-representations for capturing multiple aspects of the domain. In the
-case of NLP this means that each token gets multiple representations
--- while one embedding may capture grammatical number another may
-capture coreference and yet another may capture word sense etc.
 
-They way multihead attention is implemented is by repeating the
-self-attention calculation multiple times.  So instead of a single
-$W^Q, W^K$ and $W^V$ vectors we have separate $W_{i}^Q, W_{i}^K$ and
-$W_{i}^V$ matrices for each "head". Note that the indices are over the
-heads and not tokens.
-
-This means that we get multiple output matrices $A_i$. These are
-concatenated together to get the multihead representation.
-
-At this point we are able to answer an earlier question that we raised
-about the size of the output vectors.  According to the discussion of
-multihead attention the size of the output representation is same as
-the size of the input representation. In other words the
-representation computed by a single head $A_i$ has the shape $N x
-d_v$, but to project the output back to shape of the inputs i.e., $N x
-d$, the transformer model uses another linear projection
-operation. The multiple output representations that are computed get
-packed into a matrix of shape $N x hd_v$ where $h$ is the number of
-heads. These are projected back into a matrix of final representation
-of shape $N x d$ by using another matrix $W^O$ shaped $hd_v x d$. This
-completes the description of the attention mechanism in transformer
-model.
+* Training a transformer to be a language model.
