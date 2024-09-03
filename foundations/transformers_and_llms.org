@@ -406,3 +406,58 @@ by a temperature parameter before being passed through a probability
 distribution. This temperature parameter in $(0, 1]$ ensures that the
 probability of tokens with high weights is pushed up and the
 probability of tokens with low weights is pushed further down.
+
+* Training Large Language Models
+The LLMs are trained in a self-supervised fashion using text
+corpora. Self-supervision refers to the fact that the model is able to
+learn from the dataset without needing external supervision such as
+ground truth labels. The text in the dataset is sufficient to provide
+supervisory signals because, for any text sequence in the dataset we
+can assume that the next word is the desired next token to be output
+by the model. The training then proceeds by giving a random text
+sequence as input to the LLM and asking it to predict the next word in
+the sequence. Remember that we are trying to minimize the loss caused
+by next word prediction.  In other words we want the next word
+probability distribution to assign the highest probability to the
+correct next word and little to no probability to other words in the
+vocabulary. The correct loss function to be used in this setting is
+the cross entropy loss function. Let $\hat{y_t}$ be the next token
+distribution of the LLM at position $t$, let $y_t$ be the one hot
+encoding of the correct next word. Then the cross entropy loss is
+calculated as
+
+\begin{equation}
+loss(\hat{y_t}, y_t) = - \sum_{w \in V}\hat{y_t}[w]y_t[w]
+\end{equation}
+
+Given a single text sequence this loss calculation is done for each
+position in the sequence, by giving the transformer model the correct
+sequence upto that position. The overall loss for the text sequence is
+taken to be the average cross entropy loss across all positions. This
+process is repeated for all text sequences in the training
+corpora. Since the transformer model can predict next word for each
+position in parallel, training transformer models is much faster than
+RNNs because with RNNs the computation is inherently sequential.
+
+* Scaling laws
+It has been observed that performance of LLMs can be improved by three factors:
+- Number of parameters
+- Dataset size
+- Compute budget
+
+The relationship between the loss and these three parameters has been
+shown to scale as a power law.
+
+\begin{align}
+L(N) &= \left(\frac{N_C}{N}\right)^{\alpha_N}\\
+L(D) &= \left(\frac{D_C}{D}\right)^{\alpha_D}\\
+L(C) &= \left(\frac{C_C}{C}\right)^{\alpha_C}
+\end{align}
+
+Therefore, if the number of parameters is increased $K$ times, then
+loss is decreased $K^{\alpha_N}$ times and so on. The exact number of
+parameters or the tokens in the dataset or compute budget does not
+matter. The loss always decreases by a factor of $K^{\alpha_N},
+K^{\alpha_D}$ and $K^{\alpha_C}$ respectively. These scaling laws
+allow us to extrapolate the parameters, dataset and compute
+requirements by looking at early training behavior.
