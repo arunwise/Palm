@@ -1,0 +1,463 @@
+#+TITLE: Transformers
+#+AUTHOR: N. Arun Varma
+#+bibliography: /Users/arun/bibliography/bibliography.bib
+#+ATTR_HTML: align middle
+
+* Introduction
+The transformer architecture introduced in the paper by
+[cite:@vaswani2017attention] has become the de-facto choice for
+language modeling. The transformer model is based on the central idea
+of */self-attention/* which can be loosely described as computing
+representation for a given token by composing the representations of
+tokens in its neighborhood weighted by their relevance. The
+effectiveness of the transformer architecture stems from the fact that
+unlike earlier models which were based on recurrent neural networks,
+the transformer architecture lends itself to GPU parallelism and can
+be trained efficiently (compared to RNNs) on extremely large corpora.
+
+The transformer based models have been amazingly successful over a
+wide range of NLP tasks including question answering, text
+summarization, sentiment detection, translation, creative writing etc.
+While the successes are well recognized there is also a sense of
+concern about the resources required to train and infer using these
+models, their propensity to hallucinate, privacy concerns, copyright
+infringement and perhaps most importantly the lack of guarantees in
+settings that require responses to be grounded in facts and domain
+knowledge. Some of the popular Large Language Models (LLMs) based on
+the transformer architecture are show in [[llms][Table 1.]] (source: Wikipedia).
+
+#+CAPTION: Popular LLMs
+#+NAME: llms
+#+ATTR_HTML: align right
+| Name         | Parameters[fn::in billions]  | Organization | Open Source | Remarks                                       |
+|--------------+-----------------------+--------------+-------------+-----------------------------------------------|
+| Bert         |                 0.340 | Google       | Yes         | Encoder-only model                            |
+| Phi-2        |                   2.7 | Microsoft    | Yes         | Trained on text-book quality data.            |
+| Mistral 7B   |                     7 | Mistral AI   | Yes         |                                               |
+| T5           |                    11 | Google       | Yes         | Base model for many Google projects.          |
+| BloombergGPT |                    50 | Bloomberg    | No          | Trained on financial data                     |
+| Claude       |                    52 | Anthropic    | ?           | Fine tuned for responsible chat behavior.     |
+| Chinchilla   |                    70 | DeepMind     | No          | Reduced parameter model trained on more data. |
+| LLama 2      |                    70 | Meta AI      | No          |                                               |
+| GPT-3        |                   175 | OpenAI       | No          | The base model behind the popular ChatGPT.    |
+| Llama 3      |                   405 | Meta AI      | No          |                                               |
+
+
+
+* Self attention
+Self attention is the central concept behind the transformer
+model. Informally self-attention is a mechanism for computing the
+embedding of a token from the embeddings of the tokens in the
+neighborhood while weighing them based on relevance.
+
+More formally, consider a set of tokens $x_1,\ldots,x_n$ and their
+embeddings $v_1,\ldots,v_n$. At its core self attention is the
+following computation that yields a new embedding $a_i$ for token
+$x_i$
+
+\begin{equation}
+a_i = \sum_{j} \alpha_{ij}v_j
+\end{equation}
+
+Here $\alpha_{ij}$ are the relevance weights (i.e., relevance of token
+$x_j$ in the computation of the embedding for $x_i$). The relevance
+weights are naturally computed using the dot product which measures
+the similarity of the two tokens. However, instead of using the
+existing embeddings $V$ to compute relevance weights, the transformer
+model uses two distinct sets of embeddings that indicate the roles
+being performed by the tokens in the computation:
+1. Query embeddings: the embedding of $x_i$ in its role as the token
+   for which a new embedding is being computed.
+2. Key embeddings: the embeddings of $x_j$ in their roles as the tokens
+   being compared to $x_i$ in the computation of relevance weights.
+
+For a single token with input embedding $x_i$, its query, key and
+value embeddings are computed by using projection matrices $W^Q, W^K$
+and $W^V$.
+
+\begin{align}
+q_i &= x_i  W^Q\\
+k_i &= x_i  W^K\\
+v_i &= x_i  W^V
+\end{align}
+
+The relevance weights $\alpha_{ij}$ are computed by first taking the
+dot product $q_i k_j^T$ and normalizing it using a softmax.
+
+\begin{equation}
+\alpha_{ij} = \frac{exp(q_i k_j^T)}{\sum_j exp(q_i k_j^T)}
+\end{equation}
+
+Finally the new embedding of $x_i$ denoted $a_i$ is computed as
+
+\begin{equation}
+a_i = \sum_j \alpha_{ij}v_j
+\end{equation}
+
+Code snippets implementing the idea of self-attention is shown below
+#+INCLUDE: "../src/transformer.py" src python :lines "38-42"
+#+INCLUDE: "../src/transformer.py" src python :lines "48-50"
+
+** Scaled self attention
+The self attention used in the transformer model is a slightly
+modified version of the self attention described above. In particular,
+the relevance weights are "moderated" before being input to the
+softmax function. This is done because the result of the dot product
+attention can be very large or very small and when exponentiated can
+give rise to extreme values where gradients may not be effectively
+computed. Concretely the dot product attention is "scaled" by dividing
+it by the square root of the number of dimensions of the embeddings
+being used. The number of dimensions of the query and key embeddings
+are same and let it be denoted $d_k$. The scaled dot product attention is
+
+\begin{equation}
+\frac{q_i k_j^T}{\sqrt{d_k}}
+\end{equation}
+
+In terms of code it is
+#+INCLUDE: "../src/transformer.py" src python :lines "42-43"
+
+** Backward a.k.a "causal" self attention
+When transformers are used for "auto-regressive" or "causal" language
+modeling[fn::contrived way of saying modeling for next word
+prediction. Causality is a well defined term in AI but has been
+bastardized by the DL community], the embedding of a token is computed
+only from the tokens that precede it in the context. In order to
+preserve the GPU parallelism it is common to replace the relevance
+weights of succeeding tokens with $- \infty$ and computing the
+attention probabilities as usual.
+
+** Parallel computation
+In practice, the self attention computations of all tokens in the
+context window is performed in a batched fashion by leveraging
+efficient matrix multiplication implemented by GPUs. Consider
+- $X$ to be an $N \times d$ matrix that contains the input embeddings
+  of $N$ tokens in the context window.
+- $W^Q$ is the matrix to project input embeddings to query
+  embeddings. It is shaped $d \times d_k$
+- $W^K$ is the matrix to project input embeddings to key
+  embeddings. It is shaped $d \times d_k$
+- $W^V$ is the matrix to project input embeddings to value
+  embeddings. It is shaped $d \times d_v$.
+
+We can describe the parallel computation of scaled dot product
+attention as follows
+\begin{align}
+Q &= X W^Q\\
+K &= X W^K\\
+V &= X W^V\\
+\alpha &= softmax\left(\frac{QK^T}{\sqrt{d_k}}\right)\\
+A &= \alpha V
+\end{align}
+
+The above code snippets are general enough that they can be used for
+batched computation without any changes. The complete code that
+implements scaled dot product attention in shown below.
+
+#+INCLUDE: "../src/transformer.py" src python :lines "9-50"
+
+* Multihead attention
+Multihead attention is the generalization of the self-attention
+concept that computes multiple representations/embeddings for each
+token. The motivation behind multihead attention is that a token might
+be related to nearby tokens in multiple ways and a single
+self-attention mechanism may not capture all the details. In this way
+one can compose an embedding from nearby embeddings by using
+grammatical number, coreference, word sense etc. The final step of the
+multihead attention computation involves projecting the concatenated
+embeddings back to the embeddings of the same dimensionality as the
+input embeddings.
+
+More formally let $W_i^Q, W_i^K$ and $W_i^V$ denote the query, key and
+value projection matrices for "head" $i$. Given a matrix of input
+embeddings $X$, the self-attention computation for each head proceeds
+as before yielding $A_i$. The final output of the multihead attention
+module involves concatenating the $A_i$ and projecting back to input
+space by using a matrix shaped $hd_v \times d$ where $h$ is the number
+of heads and $d_v$ is the dimensionality of value embeddings as
+before. Let $\oplus$ denote concatenation of matrices, then the final
+output of multihead attention is computed as
+
+\begin{equation}
+O = (head_1 \oplus head_2 \cdots \oplus head_h)W^O
+\end{equation}
+
+The implementation of multihead attention in code is shown below
+
+#+INCLUDE: "../src/transformer.py" src python :lines "52-92"
+
+* Transformer blocks
+The multihead attention mechanism described so far involves taking
+linear combinations of value embeddings. Stacking multihead attention
+blocks together leaves the entire operation as a linear
+transformation. In order to learn complex patterns in the data,
+non-linearities are introduced by using feed-forward
+networks. Concretely, the feedforward network is applied to each
+embedding output by the multihead attention mechanism. So a non-linear
+transformation is applied to each embedding independently -- in other
+words the same feedfoward network is applied at each position. This
+represents a form of parameter sharing. The exact inductive bias
+behind this choice is not clear to me. Another opaque design choice of
+the feedforward network is that it is made shallow and wide (i.e., it
+has a single hidden layer whose dimensionality is larger than the
+embedding dimensionality).  A transformer block consists of a
+multihead attention layer followed by a feedforward layer.  In order
+to enable better learning, residual connections and layer
+normalizations are introduced. See [[transformerblock][Fig 2]].
+
+#+CAPTION: Transformer block (Source: Speech and Language Processing 3rd draft edition)
+#+NAME: transformerblock
+#+ATTR_HTML: :width 300px
+[[./images/transformer_block.png]]
+
+The implementation of the transformer block in code is shown below
+
+#+INCLUDE: "../src/transformer.py" src python :lines "94-175"
+
+** Residual view of the transformer
+The residual view of the transformer views the input embeddings as
+they are passed through the stack of transformer blocks from the
+perspective of the residual connections. This view highlights the fact
+that the input embedding passes through the layers unchanged except
+for the additions made by the multihead attention layers and the
+feedforward layers. Of these it is only the multihead attention layer
+that draws on information from neighboring residual streams, while the
+feedforward layer acts only on the embedding being passed through its
+residual stream. This is shown in [[residualstream][Fig 3]].
+
+#+CAPTION: Residual view of the transformer (Source: Speech and Language Processing 3rd draft edition)
+#+NAME: residualstream
+#+ATTR_HTML: :width 300px
+[[./images/residual_stream_view.png]]
+
+
+** Input embeddings
+The input to the transformer is a matrix of embeddings. Each row of
+the matrix contains an embedding for a particular word in the
+context. While the exact mechanism used for coming up with the input
+embeddings is to be explicated, we note that the embeddings of the
+tokens by themselves do not contain any positional information. In
+order to incorporate positional information of the tokens in the
+transformer input, the model uses a combination of token embeddings
+and positional embeddings. We have the choice of learning the
+positional embeddings from data. However this poses the challenge that
+due to the nature of the text corpora, there will be fewer examples
+for learning positional embeddings of extreme positions (those that
+appear towards the end of the context window) because most input
+chunks may get terminated by EOS token before the end of the context
+window is reached. It is simpler to use fixed functions that encode
+positional information and indeed the transformer paper uses a
+positional encoding computed from sine and cosine functions of
+differing frequencies. We will now describe this positional encoding
+mechanism used in the transformer paper.
+
+Consider the pair $[sin(t), cos(t)]$. This pair can disambiguate
+values of $t$ in the range $[0, 2\pi]$. One can see this by looking at
+the parametric plot of $[sin(t), cos(t)]$. Beyond $2\pi$ we cannot
+disambiguate values of $t$ due to the periodicity of the functions.
+
+#+CAPTION: Parametric plot
+#+NAME: parametricplot
+#+ATTR_HTML: :width 300px
+[[./images/parametric_plot.png]]
+
+If we want to disambiguate positions in a bigger range, we have to
+simply alter the wavelength of the functions. We know that the
+wavelength of $sin(ct)$ and $cos(ct)$ is $\frac{2\pi}{c}$. In order to
+work with the large context windows of LLMs we need a value of $c$
+that is sufficiently small. The transformers paper uses $c = 1 /
+10000$. But using a single pair of sine and cos functions with this
+wavelength introduces another problem.  Positions that are relatively
+close together will not be properly disambiguated because the values
+of the sine and cosine function do not vary significantly for small
+changes in $t$ when the wavelength is very large. For example for
+$t=2500$ and $t=25010$, the value of $(sin(t/10000), cost(t/10000))$
+are $(0.2474, 0.9689)$ and $(0.2437, 0.9686)$ respectively. The
+transformer paper overcomes this problem by using a range of sine and
+cosine functions with increasing wavelengths. More precisely, the
+transformer paper uses the following positional encoding scheme:
+
+\begin{align}
+PE(pos, 2i) &= sin\left(\frac{pos}{10000^{2i/d}}\right)\\
+PE(pos, 2i + 1) &= cos\left(\frac{pos}{10000^{2i/d}}\right)
+\end{align}
+
+The positional encoding vector $PE$ is a vector that has $d$
+dimensions (same as the input encoding). The elements of the
+positional encoding vector are obtained alternately from sine and
+cosine functions of increasing wavelength. Even dimensions are
+computed using the sine functions and odd dimensions are computed from
+cosine functions ($i$ is simply $\lfloor j/2 \rfloor$ where $j$ is the
+dimension being computed). In terms of code the positional encoding
+scheme can be implemented as follows:
+
+#+INCLUDE: "../src/transformer.py" src python :lines "177-195"
+
+** Language modeling head
+Recall that the embedding of the last position in the last layer of a
+transformer model is a prediction of the next word in the sequence. In
+order to convert this embedding into the next word we need some
+additional machinery which is known as the language modeling
+head. Note that the input to the transformer model is a one-hot
+encoded vector of the word/token. It is converted to an input
+embedding by multiplying with the embedding matrix. If the
+dimensionality of the one-hot encoded vector is $1 \times |V|$ where
+$|V|$ is the number of tokens in the vocabulary, then the shape of the
+embedding matrix will be $|V| \times d$ where $d$ is the number of
+dimensions of the embeddings. By multiplying the one-hot encoded
+vector with the embedding matrix, we select out the embedding of the
+word/token in question. In order to convert the embedding output by
+the transformer into a word/token we use the reverse operation. We
+multiply the embedding with the transpose of the embedding
+matrix. Alternatively we could multiply the embedding matrix with the
+column embedding vector.  This results in a vector of shape $1
+\times |V|$ where the elements of the vector can be now interpreted as
+weights. To get a probability distribution over the words in the
+vocabulary, these weights are passed through a softmax function. In
+this manner we can use the embedding output by the transformer model
+to come up with the next word distribution. Let $a$ be the embedding
+of the last layer and last position in the context window and $E$ be
+the embedding matrix. Then we get the next word distribution as
+$softmax\left(a E^{T}\right)$.
+
+* Why are transformers good as Language Models?
+A language model can be a versatile tool that can be used in a wide
+variety of applications because the almost all NLP tasks that we can
+think of can be posed as conditional generation tasks.
+
+Consider the task of sentiment detection which at first glance is a
+classification problem. A language model which is mainly geared
+towards predicting the next word can be used to solve this problem by
+giving an appropriately formatted input. It could be something along
+the following lines:
+
+#+BEGIN_SRC text
+Consider the following piece of text:
+
+"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+eiusmod tempor incididunt ut labore et dolore magna aliqua."
+
+The sentiment expressed is?
+#+END_SRC
+
+If next word distribution assigns a higher probability to the word
+=positive= than the word =negative=, we can label the text as
+expressing a positive sentiment. In a similar way other tasks such as
+summarization and question answering can also be framed as conditional
+generation tasks with appropriate prompts.
+
+#+BEGIN_SRC text
+Summarize the following piece of text:
+
+"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+eiusmod tempor incididunt ut labore et dolore magna aliqua."
+
+Summary:
+#+END_SRC
+
+#+BEGIN_SRC text
+"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+eiusmod tempor incididunt ut labore et dolore magna aliqua."
+
+Given the above context answer the following question.
+
+Q: Loreum ipusm ut labore?
+A:
+#+END_SRC
+
+While the above discussion applies to all kinds of language models, we
+see that these abilities are realized in practice only in transformer
+based large language models. The reason for LLMs excellent performance
+in conditional generation is due to the fact that they have large
+context windows and they can attend to the entirety of the input
+prompt and their own incrementally generated text.
+
+* Generation by sampling
+The LLMs generate text by sampling from the next word distribution
+output by the transformer model. There are several ways in which the
+distribution is used to generate tokens.
+
+** Random sampling
+In this sampling approach we simply sample the next token according to
+the next token distribution and move on. This approach produces texts
+exactly according to the distribution of the language model. However,
+this means that there is a significant chance that output that is less
+coherent or meaningful could be generated.
+
+** Top-k sampling
+In top-k sampling we truncate the distribution at top k words in the
+distribution, renormalize the distribution and sample from it. This
+ensures that the generated text is more likely to be coherent and
+meaningful.
+
+** Top-p sampling
+Similar to top-k sampling, the idea of top-p sampling is to truncate
+the distribution so that it includes fraction 'p' of the probability
+mass. This is better than top-k because we always include tokens that
+together constitute fraction 'p' of the probability mass, whereas in
+top-k sampling based on the shape of the distribution, we might have a
+situation in which the top-k words do not carry sufficient probability
+mass.
+
+** Temperature sampling
+The idea of temperature sampling is accentuate the probabilities of
+the distribution. Instead of using the weights as is, they are divided
+by a temperature parameter before being passed through a probability
+distribution. This temperature parameter in $(0, 1]$ ensures that the
+probability of tokens with high weights is pushed up and the
+probability of tokens with low weights is pushed further down.
+
+* Training Large Language Models
+The LLMs are trained in a self-supervised fashion using text
+corpora. Self-supervision refers to the fact that the model is able to
+learn from the dataset without needing external supervision such as
+ground truth labels. The text in the dataset is sufficient to provide
+supervisory signals because, for any text sequence in the dataset we
+can assume that the next word is the desired next token to be output
+by the model. The training then proceeds by giving a random text
+sequence as input to the LLM and asking it to predict the next word in
+the sequence. Remember that we are trying to minimize the loss caused
+by next word prediction.  In other words we want the next word
+probability distribution to assign the highest probability to the
+correct next word and little to no probability to other words in the
+vocabulary. The correct loss function to be used in this setting is
+the cross entropy loss function. Let $\hat{y_t}$ be the next token
+distribution of the LLM at position $t$, let $y_t$ be the one hot
+encoding of the correct next word. Then the cross entropy loss is
+calculated as
+
+\begin{equation}
+loss(\hat{y_t}, y_t) = - \sum_{w \in V}\hat{y_t}[w]y_t[w]
+\end{equation}
+
+Given a single text sequence this loss calculation is done for each
+position in the sequence, by giving the transformer model the correct
+sequence upto that position. The overall loss for the text sequence is
+taken to be the average cross entropy loss across all positions. This
+process is repeated for all text sequences in the training
+corpora. Since the transformer model can predict next word for each
+position in parallel, training transformer models is much faster than
+RNNs because with RNNs the computation is inherently sequential.
+
+* Scaling laws
+It has been observed that performance of LLMs can be improved by three factors:
+- Number of parameters
+- Dataset size
+- Compute budget
+
+The relationship between the loss and these three parameters has been
+shown to scale as a power law.
+
+\begin{align}
+L(N) &= \left(\frac{N_C}{N}\right)^{\alpha_N}\\
+L(D) &= \left(\frac{D_C}{D}\right)^{\alpha_D}\\
+L(C) &= \left(\frac{C_C}{C}\right)^{\alpha_C}
+\end{align}
+
+Therefore, if the number of parameters is increased $K$ times, then
+loss is decreased $K^{\alpha_N}$ times and so on. The exact number of
+parameters or the tokens in the dataset or compute budget does not
+matter. The loss always decreases by a factor of $K^{\alpha_N},
+K^{\alpha_D}$ and $K^{\alpha_C}$ respectively. These scaling laws
+allow us to extrapolate the parameters, dataset and compute
+requirements by looking at early training behavior.
