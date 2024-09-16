@@ -1,0 +1,218 @@
+#+TITLE: Encoder models
+#+AUTHOR: N. Arun Varma
+#+bibliography: /Users/arun/bibliography/bibliography.bib
+#+ATTR_HTML: align middle
+
+* Introduction
+The transformer based language models fall into three broad categories:
+- encoder models
+- decoder models
+- encoder-decoder models
+
+The [[file:transformers_and_llms.org][autoregressive models]] geared towards conditional generation are
+examples of decoder only models. The encoder only models are described
+in this note while encoder-decoder models are described in TBD.
+
+While the architecture of encoder only models and decoder only models
+looks almost identical when we consider the layers in terms of
+transformer blocks, there is a single but crucial difference in terms
+of the connections used for the self-attention mechanism. Remember
+that the self-attention computation in autoregressive transformer
+models ignores the in the future -- only words that precede a given
+token are used in the computation of its attention based embeddings.
+In contrast the embeddings of words in encoder models are computed by
+a self-attention mechanism that considers all the words in the context
+-- both the preceding and succeeding words.
+
+The encoder models are not typically used for conditional
+generation. They are geared towards learning contextual embeddings of
+words in the language. Note that decoder/autoregressive models also
+compute contextual embeddings, but there the context is limited to
+whatever precedes the word in question. The contextual embeddings
+learned by encoder models are much more powerful and useful in
+downstream applications.
+
+Note that in order to train the encoder models we cannot use next word
+prediction task since the architecture of encoder models allows it to
+have access to all the words in the context and it would be trivial to
+perform next word prediction. Instead the training task involves
+masking a word in a sentence and asking the model to predict the word
+from the surrounding context. For this reason these models are also
+known as masked language models. In the rest of the discussion we will
+use the terms encoder models/encoder only models/bidirectional
+transformer encoders and masked language models interchangeably.
+
+* Implementation
+As noted in the introduction the only difference in the architecture
+of bidirectional transformer encoder from the decoder models is that
+the self-attention mechanism is not autoregressive. In order to
+preserve parallelism the self attention computation of decoder and
+encoder models proceeds in an identical fashion for the initial
+part. It is only when converting the self attention weights to
+probabilities we make sure to substitute self attention weights of
+succeeding words with negative infinity so that they get zero self
+attention probabilities. But in the encoder models self attention
+weights are left untouched and self attention probabilities are
+computed according to the computed weights. Therefore we can reuse the
+code implemented for decoder models without any changes. We only need
+to ensure that ~autoregressive=False~ is passed whenever we make a
+call to the ~forward~ method. See the code below.
+
+
+#+INCLUDE: "../src/transformer.py" src python :lines "9-50"
+
+* Training
+We mentioned earlier that masked language models are trained in a
+self-supervised fashion by masking a word in the sequence and asking
+it to predict the masked word. The actual training method used for
+models like BERT is slightly more elaborate. These models were trained
+to perform well at two tasks -- the first is predicting masked or
+corrupted words and the other objective is to predict if a pair of
+sentences are really adjacent sentences in a corpus.
+
+For the first training objective, about 15% of the tokens are chosen
+as candidates for masking/corruption. Of these 80% are replaced by a
+special [MASK] token, 10% are repalced with a random word from the
+vocabulary and the remaining 10% are left unchanged. The training
+objective is to predict the masked tokens and the tokens that were
+changed (see [[maskedwordprediction][Fig 1]]). The embeddings output by the final layer at the
+masked positions is multiplied by the unembedding matrix and the
+resulting weights are converted to probabilities using the softmax
+function.
+
+#+CAPTION: Next sentence prediction
+#+NAME: maskedwordprediction
+#+ATTR_HTML: :width 300px
+[[./images/mlm_loss.png]]
+
+For the second training objective, the pair of sentences are separated
+by a [SEP] token and a special [CLS] token is prepended to the
+pair. The training is performed by 50% of the input containing actual
+pairs of adjacent sentences in the corpus and the remaining 50% of the
+input data consists of randomly sampled sentences that are not
+adjacent to each other. The embedding output by the final layer for
+[CLS] token is multiplied by a learned weight project matrix that maps
+the embedding to weights for two classes and they are passed through a
+softmax for the final prediction probabilities (see [[nextsentenceprediction][Fig 2]]).
+
+#+CAPTION: Next sentence prediction
+#+NAME: nextsentenceprediction
+#+ATTR_HTML: :width 300px
+[[./images/nsp_loss.png]]
+
+For both the masked word prediction objective and the next sentence
+prediction objective, the natural loss function to use is the cross
+entroy loss. In other words we are minimizing the negative of the
+predicted probability of the correct word or class. Since the loss for
+masked word prediction is influenced only by the masked words, it is
+felt that masked language models are not very efficient at using the
+training data when compared to decoder models which can use every
+token in the sequence to generate self-supervision signals.
+
+* Contextual Embeddings
+The embeddings output by bidirectional transformer encoder model can
+be viewed as contextual representations of the words in the
+surrounding context.  More precisely if $x_1,\ldots,x_n$ are the input
+tokens and $h_1,\ldots,h_n$ are the output tokens, then $h_i$ the
+representation of $x_i$ in the context $x_1,\ldots,x_n$. These
+contextual embeddigns are useful in applications where the meaning of
+the word needs by considered in the given context. Static embeddings
+like Gove and word2vec give a single embedding per word, but
+contextual embeddings give distinct embeddings for the word based on
+the surrounding context. We will discuss several applications where
+such contextual embeddings are useful.
+
+* Applications
+
+** Word sense disambiguation
+Words can have multiple meanings and the particular sense in which a
+word is used is known as word sense. Word sense disambiguation task
+involves determining the sense in which a word is used in a particular
+context. This is solved by bidirectional encoder transformers in the
+following way.
+
+1. A use a dataset in which the words are annotated with their word
+   sense. The sentences in these dataset are passed through the BERT
+   model and the contextual embeddings of the words are computed.
+
+2. For each word sense (i.e., word and its sense pair) we look at all
+   occurrences in the dataset and compute the average of their
+   contextual embeddings.
+
+3. In order to disambiguate the sense of a word in a new sentence, we
+   output contextual embeddings using the BERT model and compare the
+   output embedding with the average sense embeddings computed in the
+   previous step for that word. The choose the word sense to be the
+   sense whose average sense embedding is closed to the ouput
+   embedding.
+
+** Sequence classification
+Consider an example like sentiment analysis. We saw that it can be
+performed by decoder models through [[file:transformers_and_llms.org][(conditional generation)]]. Encoder
+models can be used to perform the same task in a more direct fashion
+by asking the model to generate a distribution over class labels.
+
+In order to perform sequence classification a special token [CLS] is
+prepended to the sequence to be classified. Note that the [CLS] token
+is prepended to the input for next sentence prediction objective. To
+recall in the next sentence prediction task two sentences are
+separated by a [SEP] token and a [CLS] token is prepended to the
+input. The model is trained so that the embedding output by the [CLS]
+token can discriminate between sentence pairs that occur together in
+the corpus and those that are random. In a vague sense we can believe
+that the embedding output at the [CLS] token is an aggregate
+representation of the entire input (i.e., the two sentences separated
+by the [SEP] token). The authors show that this embedding can be used
+for tasks such as sentiment classification even though the input
+format is clearly very different (i.e., there is no [SEP] token and
+there is only a single sentence). The BERT model is finetuned to
+perform sentiment analysis by introducing a trainable weight matrix
+that projects the output embedding of the [CLS] token to two
+classes. We then use a labeled dataset of sentences annotated with
+their sentiment to update the weights of this matrix.
+
+** Sentence-Pair classification
+Sentence-pair classification problems are very similar to next
+sentence prediction task. Since the model is pretrained using the NSP
+objective, the output embedding for the [CLS] token contains the
+aggregate representation of the pairs of sentences presented to the
+model. When we need to perform a task other than next sentence
+prediction on a pair of sentences -- for example paraphrase detection
+or entailment, we need to finetune a new head. This head is nothing
+but a trainable projection matrix that can map the output embedding to
+the required class.  Obviously we need a labeled dataset for the task
+at hand, so that the projection matrix can be tuned to output the
+correct projection using the [CLS] output embedding.
+
+** Sequence labeling
+Consider the task of Named Entity Recognition (NER) tagging in a given
+piece of text. This is solved by using tagging frameworks such as BIOS
+tagging where there is a special tag that identifies a span of text
+that is a named entity (for example B-Per marks the beginning of a
+named entity corresponding to a person) another special tag is used to
+mark tokens which are inside the span of interest (I-Per is used to
+tag tokens that fall within a persons name) and an O tag is used to
+tag words outside any span of interest. The named entity recognition
+task then is to apply the correct tag to each word in the sequence so
+that named entities in the text are correctly identified. Just like
+the earlier finetuning applications we saw earlier, we can use
+additional circuitry and the embeddings produced by bidirectional
+transformer encoders to solve this problem. Note that this is a task
+they may not be elegantly formulated as a conditional generation task.
+
+We know that the output embedding of a BERT model for each token is
+its contextual representation. By using a trainable projection matrix
+that maps the output embedding to one of the possible tasks, we have
+machinery that can output NER tags/labels. Passing the output of this
+circuit through softmax function gives us a distribution over the
+possible tags. To complete the description of the technique we note
+that we need a labeled dataset where sequences have been annotated
+with correct NER tags in order to tune the weights of the projection
+matrix. Note that we do not have a separate head for each position.
+Instead there should be a single head with shared parameters than can
+project output embedding to a NER tag (See [[sequencelabeling][Fig 3]]).
+
+#+CAPTION: Sequence labeling
+#+NAME: sequencelabeling
+#+ATTR_HTML: :width 300px
+[[./images/sequence_labeling.png]]
